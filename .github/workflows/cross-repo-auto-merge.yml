@@ -1,0 +1,39 @@
+# .github/workflows/cross-repo-auto-merge.yml
+
+name: Cross Repo Auto Merge
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  merge-external-prs:
+    if: github.event.comment.body == '/bot merge all'
+    runs-on: ubuntu-latest
+
+    env:
+      GH_TOKEN: ${{ secrets.CROSS_REPO_PAT }}
+      TARGET_REPOS: |
+        org1/repo-a
+        org1/repo-b
+
+    steps:
+    - name: Checkout (Optional)
+      uses: actions/checkout@v3
+
+    - name: Install GitHub CLI
+      uses: cli/cli-action@v2
+
+    - name: Merge PRs in other repos
+      run: |
+        while IFS= read -r REPO; do
+          echo "🔍 Checking repo: $REPO"
+          
+          prs=$(gh pr list -R "$REPO" --state open --json number,mergeable,headRefName -q '.[] | select(.mergeable == "MERGEABLE") | .number')
+
+          for pr in $prs; do
+            echo "✅ Attempting to merge PR #$pr in $REPO"
+            gh pr merge "$pr" -R "$REPO" --merge --admin --delete-branch || echo "⚠️ Failed to merge PR #$pr"
+          done
+
+        done <<< "$TARGET_REPOS"
